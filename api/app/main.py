@@ -1,0 +1,217 @@
+"""
+Main FastAPI Application
+Controller layer that orchestrates AI and Document services.
+"""
+import os
+import shutil
+import tempfile
+from pathlib import Path
+from typing import List, Optional
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.services.ai_engine import (
+    get_client,
+    upload_to_gemini,
+    agent_analyst,
+    agent_architect,
+    calculate_batches
+)
+from app.services.doc_generator import generate_docx
+from app.schemas import ExamItem, Worksheet
+
+# Setup Paths
+BASE_DIR = Path(__file__).resolve().parents[2]
+DATA_DIR = BASE_DIR / "data"
+OUTPUT_DIR = BASE_DIR / "output"
+STATIC_DIR = BASE_DIR / "static"
+
+# Ensure directories exist
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_runtime_output_dir() -> Path:
+    """Resolve output directory for local dev or serverless runtime."""
+    if os.getenv("VERCEL"):
+        return Path(tempfile.gettempdir()) / "exam-gen-output"
+    return OUTPUT_DIR
+
+# Initialize FastAPI App
+app = FastAPI(
+    title="Exam Gen API",
+    description="AI-powered exam generation from PDF documents",
+    version="1.0.0"
+)
+
+# CORS Middleware (Allow all origins for development)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount Static Files
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/")
+async def read_root():
+    """Serve the main UI."""
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return {"message": "Exam Gen API is running. No UI found."}
+
+
+def reindex_exam_items(worksheet: Worksheet) -> Worksheet:
+    """
+    Reindex exam item IDs sequentially from 1..N.
+
+    Args:
+        worksheet: Worksheet to reindex.
+
+    Returns:
+        Worksheet with sequential item IDs.
+    """
+    reindexed_items: List[ExamItem] = []
+    for index, item in enumerate(worksheet.items, start=1):
+        reindexed_items.append(item.model_copy(update={"id": index}))
+
+    return worksheet.model_copy(update={"items": reindexed_items})
+
+
+@app.post("/generate-exam")
+async def generate_exam(
+    file: UploadFile = File(..., description="PDF file to generate exam from"),
+    instruction: str = Form(
+        default="ขอข้อสอบแนววิเคราะห์",
+        description="Instructions for exam generation (e.g., difficulty, topic focus, style)"
+    ),
+    question_count: int = Form(
+        default=10,
+        description="Number of questions to generate"
+    ),
+    language: str = Form(
+        default="ไทย",
+        description="Language for generated questions (ไทย or English)"
+    )
+):
+    """
+    Generate an exam from a PDF file based on user instructions.
+    
+    Args:
+        file: Uploaded PDF file.
+        instruction: User's instruction for the exam.
+    
+    Returns:
+        JSON response with download URL and brief.
+    """
+    try:
+        # 1. Save uploaded file temporarily (serverless-safe)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            file_path = buffer.name
+        
+        # 2. Validate inputs
+        allowed_counts = {10, 20, 30, 50}
+        if question_count not in allowed_counts:
+            raise HTTPException(status_code=422, detail="Invalid question_count. Allowed: 10, 20, 30, 50")
+
+        allowed_languages = {"ไทย", "English"}
+        if language not in allowed_languages:
+            raise HTTPException(status_code=422, detail="Invalid language. Allowed: ไทย, English")
+
+        # 3. Initialize AI Client
+        client = get_client()
+        
+        # 3. Upload to Gemini
+        gemini_file = upload_to_gemini(client, file_path)
+        
+        # 4. Agent 1: Analyze content
+        brief = agent_analyst(client, gemini_file, instruction, question_count, language)
+        
+        # 5. Agent 2: Design exam
+        worksheet = agent_architect(client, gemini_file, brief, instruction, question_count, language)
+
+        # 6. Reindex items and prepare metadata
+        worksheet = reindex_exam_items(worksheet)
+        total_generated = len(worksheet.items)
+        batches_planned = len(calculate_batches(question_count, max_batch=10))
+        warning: Optional[str] = None
+        if total_generated < question_count:
+            warning = (
+                f"Generated {total_generated} of {question_count} questions. "
+                "Partial success due to model output variability."
+            )
+
+        # 7. Generate DOCX
+        output_filename = f"worksheet_{os.urandom(4).hex()}.docx"
+        runtime_output_dir = get_runtime_output_dir()
+        runtime_output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = runtime_output_dir / output_filename
+        generate_docx(worksheet, str(output_path))
+
+        return {
+            "status": "success",
+            "message": "Exam generated successfully",
+            "filename": output_filename,
+            "brief": brief,
+            "download_url": f"/download/{output_filename}",
+            "requested_count": question_count,
+            "total_generated": total_generated,
+            "batches_planned": batches_planned,
+            "warning": warning
+        }
+    
+    except HTTPException as e:
+        raise e
+    except ValueError as e:
+        # API Key or configuration errors
+        raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
+    except Exception as e:
+        # Other unexpected errors
+        print(f"Error during exam generation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    finally:
+        if "file_path" in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+
+
+@app.get("/download/{filename}")
+async def download_file(filename: str):
+    """
+    Download a generated exam file.
+    
+    Args:
+        filename: Name of the file to download.
+    
+    Returns:
+        File response with the .docx file.
+    """
+    file_path = get_runtime_output_dir() / filename
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(
+        str(file_path),
+        filename=filename,
+        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy", "service": "Exam Gen API"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
