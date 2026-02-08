@@ -288,7 +288,9 @@ async def render_docx(request: RenderDocxRequest):
     runtime_output_dir.mkdir(parents=True, exist_ok=True)
     output_path = runtime_output_dir / output_filename
 
-    generate_docx(request.worksheet, str(output_path))
+    # Ensure items are indexed correctly 1..N before rendering
+    worksheet = reindex_exam_items(request.worksheet)
+    generate_docx(worksheet, str(output_path))
 
     return FileResponse(
         str(output_path),
