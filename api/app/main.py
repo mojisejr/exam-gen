@@ -107,6 +107,10 @@ async def generate_exam(
     language: str = Form(
         default="ไทย",
         description="Language for generated questions (ไทย or English)"
+    ),
+    exam_type: str = Form(
+        default="auto",
+        description="Preferred exam type (auto, multiple_choice, true_false, subjective)"
     )
 ):
     """
@@ -134,6 +138,13 @@ async def generate_exam(
         if language not in allowed_languages:
             raise HTTPException(status_code=422, detail="Invalid language. Allowed: ไทย, English")
 
+        allowed_exam_types = {"auto", "multiple_choice", "true_false", "subjective"}
+        if exam_type not in allowed_exam_types:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid exam_type. Allowed: auto, multiple_choice, true_false, subjective"
+            )
+
         # 3. Initialize AI Client
         client = get_client()
         
@@ -144,7 +155,9 @@ async def generate_exam(
         brief = agent_analyst(client, gemini_file, instruction, question_count, language)
         
         # 5. Agent 2: Design exam
-        worksheet = agent_architect(client, gemini_file, brief, instruction, question_count, language)
+        worksheet = agent_architect(
+            client, gemini_file, brief, instruction, question_count, language, exam_type
+        )
 
         # 6. Reindex items and prepare metadata
         worksheet = reindex_exam_items(worksheet)
@@ -205,6 +218,10 @@ async def analyze_pdf(
         default="ไทย",
         description="Language for generated questions"
     ),
+    exam_type: str = Form(
+        default="auto",
+        description="Preferred exam type (auto, multiple_choice, true_false, subjective)"
+    ),
 ):
     """Analyze PDF and return a design brief for batch generation."""
     try:
@@ -214,6 +231,13 @@ async def analyze_pdf(
 
         client = get_client()
         gemini_file = upload_to_gemini(client, file_path)
+        allowed_exam_types = {"auto", "multiple_choice", "true_false", "subjective"}
+        if exam_type not in allowed_exam_types:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid exam_type. Allowed: auto, multiple_choice, true_false, subjective"
+            )
+
         brief = agent_analyst(client, gemini_file, instruction, question_count, language)
 
         return {"brief": brief}
@@ -246,6 +270,10 @@ async def generate_batch_endpoint(
         default="ไม่มี",
         description="Topics to avoid, comma-separated"
     ),
+    exam_type: str = Form(
+        default="auto",
+        description="Preferred exam type (auto, multiple_choice, true_false, subjective)"
+    ),
 ):
     """Generate a single batch of questions with avoid-topics control."""
     try:
@@ -261,6 +289,13 @@ async def generate_batch_endpoint(
             if topic.strip()
         ]
 
+        allowed_exam_types = {"auto", "multiple_choice", "true_false", "subjective"}
+        if exam_type not in allowed_exam_types:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid exam_type. Allowed: auto, multiple_choice, true_false, subjective"
+            )
+
         worksheet = generate_batch(
             client=client,
             file_obj=gemini_file,
@@ -270,6 +305,7 @@ async def generate_batch_endpoint(
             language=language,
             batch_info=batch_info,
             avoid_topics=topics,
+            exam_type=exam_type,
         )
 
         new_topics = [normalize_topic(item.question) for item in worksheet.items]

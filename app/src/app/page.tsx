@@ -8,10 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 
+type ExamType = "auto" | "multiple_choice" | "true_false" | "subjective";
+
 type ExamItem = {
   id: number;
   question: string;
-  options: { label: string; text: string }[];
+  type: "multiple_choice" | "true_false" | "subjective";
+  options?: { label: string; text: string }[] | null;
   correct_answer: string;
   explanation?: string | null;
   image_prompt?: string | null;
@@ -31,6 +34,12 @@ type BatchResponse = {
 
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 50];
 const LANGUAGE_OPTIONS = ["ไทย", "English"] as const;
+const EXAM_TYPE_OPTIONS: { value: ExamType; label: string }[] = [
+  { value: "auto", label: "อัตโนมัติ (AI เลือกให้)" },
+  { value: "multiple_choice", label: "เฉพาะปรนัย (Multiple Choice)" },
+  { value: "true_false", label: "เฉพาะถูก/ผิด (True/False)" },
+  { value: "subjective", label: "เฉพาะอัตนัย (Subjective)" },
+];
 
 function buildBatches(total: number, size: number) {
   const batches: number[] = [];
@@ -57,6 +66,7 @@ export default function Home() {
   const [instruction, setInstruction] = useState("ขอข้อสอบแนววิเคราะห์");
   const [questionCount, setQuestionCount] = useState(50);
   const [language, setLanguage] = useState<(typeof LANGUAGE_OPTIONS)[number]>("ไทย");
+  const [examType, setExamType] = useState<ExamType>("auto");
   const [status, setStatus] = useState("Idle");
   const [brief, setBrief] = useState<string | null>(null);
   const [items, setItems] = useState<ExamItem[]>([]);
@@ -105,6 +115,7 @@ export default function Home() {
     analyzeForm.append("instruction", instruction);
     analyzeForm.append("question_count", String(questionCount));
     analyzeForm.append("language", language);
+    analyzeForm.append("exam_type", examType);
 
     const analyzeResponse = await fetch(getApiUrl("/api/analyze"), {
       method: "POST",
@@ -136,6 +147,7 @@ export default function Home() {
       generateForm.append("design_brief", analyzeData.brief);
       generateForm.append("batch_info", `Batch ${index + 1}/${batches.length}`);
       generateForm.append("avoid_topics", avoidTopics.join(", ") || "ไม่มี");
+      generateForm.append("exam_type", examType);
 
       const batchResponse = await fetch(getApiUrl("/api/generate-batch"), {
         method: "POST",
@@ -270,6 +282,21 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-zinc-600">รูปแบบข้อสอบ</label>
+                <select
+                  className="border-input bg-transparent text-zinc-900 shadow-xs focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] h-9 w-full rounded-md border px-3 text-sm"
+                  value={examType}
+                  onChange={(event) => setExamType(event.target.value as ExamType)}
+                >
+                  {EXAM_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-2">

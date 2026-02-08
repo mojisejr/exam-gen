@@ -46,6 +46,7 @@ PROMPT_TEMPLATES = {
 
 ข้อกำหนด: จำนวนข้อ {question_count} ข้อ, ภาษา {language}
 Instruction จากผู้ใช้: "{instruction}"
+ข้อกำหนดรูปแบบข้อสอบ: {exam_type_instruction}
 
 บริบทของงานย่อย: {batch_info}
 หัวข้อที่ต้องหลีกเลี่ยง: {avoid_topics}
