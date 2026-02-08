@@ -19,11 +19,13 @@ def test_health_endpoint():
 
 
 def test_root_endpoint_serves_ui():
-    """Test that root endpoint serves HTML."""
+    """Test that root endpoint serves JSON info."""
     response = client.get("/")
     assert response.status_code == 200
-    # Should return HTML content
-    assert "text/html" in response.headers.get("content-type", "")
+    # Should return JSON content (API-only mode)
+    assert "application/json" in response.headers.get("content-type", "")
+    body = response.json()
+    assert "message" in body
 
 
 def test_generate_exam_endpoint(sample_pdf, mock_gemini_client, tmp_path):

@@ -69,11 +69,11 @@ if os.path.exists(STATIC_DIR):
 
 @app.get("/")
 async def read_root():
-    """Serve the main UI."""
+    """Return API status info (UI handled by Next.js)."""
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
-    return {"message": "Exam Gen API is running. No UI found."}
+    return {"message": "Exam Gen API is running."}
 
 
 def reindex_exam_items(worksheet: Worksheet) -> Worksheet:
