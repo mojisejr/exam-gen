@@ -122,5 +122,19 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at 20% 20%, oklch(0.95 0.02 280 / 0.6), transparent 45%),
+      radial-gradient(circle at 80% 10%, oklch(0.93 0.04 160 / 0.6), transparent 40%),
+      radial-gradient(circle at 30% 80%, oklch(0.9 0.05 40 / 0.6), transparent 45%);
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply rounded-2xl border border-white/10 bg-white/60 shadow-lg backdrop-blur;
+  }
+
+  .glass-panel-dark {
+    @apply rounded-2xl border border-white/10 bg-white/10 shadow-lg backdrop-blur;
   }
 }

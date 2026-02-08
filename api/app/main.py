@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import List, Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +18,9 @@ from app.services.ai_engine import (
     upload_to_gemini,
     agent_analyst,
     agent_architect,
-    calculate_batches
+    calculate_batches,
+    generate_batch,
+    normalize_topic,
 )
 from app.services.doc_generator import generate_docx
 from app.schemas import ExamItem, Worksheet
@@ -38,6 +41,10 @@ def get_runtime_output_dir() -> Path:
     if os.getenv("VERCEL"):
         return Path(tempfile.gettempdir()) / "exam-gen-output"
     return OUTPUT_DIR
+
+
+class RenderDocxRequest(BaseModel):
+    worksheet: Worksheet
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -181,6 +188,113 @@ async def generate_exam(
     finally:
         if "file_path" in locals() and os.path.exists(file_path):
             os.remove(file_path)
+
+
+@app.post("/api/analyze")
+async def analyze_pdf(
+    file: UploadFile = File(..., description="PDF file to analyze"),
+    instruction: str = Form(
+        default="ขอข้อสอบแนววิเคราะห์",
+        description="Instructions for exam generation"
+    ),
+    question_count: int = Form(
+        default=10,
+        description="Number of questions to generate"
+    ),
+    language: str = Form(
+        default="ไทย",
+        description="Language for generated questions"
+    ),
+):
+    """Analyze PDF and return a design brief for batch generation."""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            file_path = buffer.name
+
+        client = get_client()
+        gemini_file = upload_to_gemini(client, file_path)
+        brief = agent_analyst(client, gemini_file, instruction, question_count, language)
+
+        return {"brief": brief}
+    finally:
+        if "file_path" in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+
+
+@app.post("/api/generate-batch")
+async def generate_batch_endpoint(
+    file: UploadFile = File(..., description="PDF file to generate exam from"),
+    design_brief: str = Form(..., description="Design brief from analyzer"),
+    instruction: str = Form(
+        default="ขอข้อสอบแนววิเคราะห์",
+        description="Instructions for exam generation"
+    ),
+    question_count: int = Form(
+        default=10,
+        description="Number of questions to generate in this batch"
+    ),
+    language: str = Form(
+        default="ไทย",
+        description="Language for generated questions"
+    ),
+    batch_info: str = Form(
+        default="Batch 1/1",
+        description="Batch progress metadata"
+    ),
+    avoid_topics: str = Form(
+        default="ไม่มี",
+        description="Topics to avoid, comma-separated"
+    ),
+):
+    """Generate a single batch of questions with avoid-topics control."""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            file_path = buffer.name
+
+        client = get_client()
+        gemini_file = upload_to_gemini(client, file_path)
+        topics = [
+            normalize_topic(topic)
+            for topic in avoid_topics.split(",")
+            if topic.strip()
+        ]
+
+        worksheet = generate_batch(
+            client=client,
+            file_obj=gemini_file,
+            design_brief=design_brief,
+            instruction=instruction,
+            question_count=question_count,
+            language=language,
+            batch_info=batch_info,
+            avoid_topics=topics,
+        )
+
+        new_topics = [normalize_topic(item.question) for item in worksheet.items]
+
+        return {"worksheet": worksheet, "new_topics": new_topics}
+    finally:
+        if "file_path" in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+
+
+@app.post("/api/render-docx")
+async def render_docx(request: RenderDocxRequest):
+    """Render DOCX from a worksheet payload and return the file."""
+    output_filename = f"worksheet_{os.urandom(4).hex()}.docx"
+    runtime_output_dir = get_runtime_output_dir()
+    runtime_output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = runtime_output_dir / output_filename
+
+    generate_docx(request.worksheet, str(output_path))
+
+    return FileResponse(
+        str(output_path),
+        filename=output_filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 
 
 @app.get("/download/{filename}")
