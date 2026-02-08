@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 class QuestionType(str, Enum):
     """Supported question types for exam generation."""
     MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE = "true_false"
+    SUBJECTIVE = "subjective"
 
 
 class Option(BaseModel):
@@ -22,8 +24,18 @@ class ExamItem(BaseModel):
     """Represents a single exam question with its metadata."""
     id: int = Field(..., description="Question number")
     question: str = Field(..., description="The question text")
-    options: List[Option] = Field(..., description="List of answer choices")
-    correct_answer: str = Field(..., description="Label of the correct option")
+    type: QuestionType = Field(
+        QuestionType.MULTIPLE_CHOICE,
+        description="Question format type"
+    )
+    options: Optional[List[Option]] = Field(
+        None,
+        description="List of answer choices (required for multiple_choice/true_false)"
+    )
+    correct_answer: str = Field(
+        ..., 
+        description="Correct answer label or text depending on question type"
+    )
     explanation: Optional[str] = Field(None, description="Explanation of the answer")
     image_prompt: Optional[str] = Field(
         None, 
