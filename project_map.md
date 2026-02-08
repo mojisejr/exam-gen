@@ -1,7 +1,7 @@
 # Project Map: exam-gen
 
 ## Philosophy
-แพลตฟอร์มสร้างข้อสอบจากเอกสาร PDF ด้วย AI โดยเน้นความแม่นยำ ความเร็ว และประสบการณ์ใช้งานที่ลื่นไหล
+แพลตฟอร์มสร้างข้อสอบอัจฉริยะจากเอกสาร PDF ที่รองรับรูปแบบคำถามที่หลากหลาย (Multiple Choice, True/False, Subjective) โดยเน้นความแม่นยำ ความเร็ว และประสบการณ์ใช้งานที่ลื่นไหล
 
 ## Repository
 - GitHub: https://github.com/mojisejr/exam-gen
@@ -24,8 +24,10 @@
 - vercel.json : Runtime config สำหรับ Vercel
 
 ## Data Flow
-Frontend (app/) -> API (api/index.py) -> Gemini -> JSON -> DOCX -> Response
+Frontend (app/) -> API (api/index.py) -> Gemini (Multi-format Prompting) -> Structured JSON -> Doc Rendering Helpers -> DOCX -> Response
 
 ## Challenges
 - Serverless timeout และการจัดการไฟล์แบบ in-memory
+- การคุมความถูกต้องของ JSON Schema เมื่อมีการใช้หลายประเภทข้อสอบพร้อมกัน (Hybrid Schema Validation)
+- การจัดรูปแบบ (Formatting) ใน DOCX ให้สอดคล้องกับธรรมชาติของแต่ละรูปแบบข้อสอบ
 - การคง schema กลางให้ตรงกันระหว่าง Python และ TypeScript
