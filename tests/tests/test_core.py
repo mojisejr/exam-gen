@@ -31,6 +31,7 @@ def test_prompt_integrity_architect():
     design_brief = "Mock brief content"
     batch_info = "Batch 1/2 (size 10)"
     avoid_topics = "หัวข้อ A, หัวข้อ B"
+    exam_type_inst = "ต้องออกข้อสอบแบบ multiple_choice เท่านั้น"
     prompt = get_prompt(
         "architect",
         instruction=instruction,
@@ -38,13 +39,15 @@ def test_prompt_integrity_architect():
         question_count=20,
         language="English",
         batch_info=batch_info,
-        avoid_topics=avoid_topics
+        avoid_topics=avoid_topics,
+        exam_type_instruction=exam_type_inst
     )
     
     assert instruction in prompt
     assert design_brief in prompt
     assert batch_info in prompt
     assert avoid_topics in prompt
+    assert exam_type_inst in prompt
     assert "Exam Architect" in prompt
 
 
