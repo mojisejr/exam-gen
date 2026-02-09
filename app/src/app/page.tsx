@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type DragEvent } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,14 +69,7 @@ export default function Home() {
   const [questionCount, setQuestionCount] = useState(50);
   const [language, setLanguage] = useState<(typeof LANGUAGE_OPTIONS)[number]>("ไทย");
   const [examType, setExamType] = useState<ExamType>("auto");
-  const [apiKey, setApiKey] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return window.localStorage.getItem("gemini_api_key") ?? "";
-  });
-  const [apiKeyDraft, setApiKeyDraft] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return window.localStorage.getItem("gemini_api_key") ?? "";
-  });
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [status, setStatus] = useState("Idle");
   const [items, setItems] = useState<ExamItem[]>([]);
@@ -111,6 +104,31 @@ export default function Home() {
     if (dropped) handleFileChange(dropped);
   };
 
+  const apiKey = useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === "undefined") return () => undefined;
+      const handler = (event: Event) => {
+        if (event instanceof StorageEvent) {
+          if (event.key && event.key !== "gemini_api_key") return;
+        }
+        onStoreChange();
+      };
+      window.addEventListener("storage", handler);
+      window.addEventListener("byok-storage", handler as EventListener);
+      return () => {
+        window.removeEventListener("storage", handler);
+        window.removeEventListener("byok-storage", handler as EventListener);
+      };
+    },
+    () => window.localStorage.getItem("gemini_api_key") ?? "",
+    () => "",
+  );
+
+  const notifyApiKeyChange = () => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new Event("byok-storage"));
+  };
+
   const openKeyModal = () => {
     setApiKeyDraft(apiKey);
     setIsKeyModalOpen(true);
@@ -120,18 +138,17 @@ export default function Home() {
     const nextKey = apiKeyDraft.trim();
     if (nextKey) {
       window.localStorage.setItem("gemini_api_key", nextKey);
-      setApiKey(nextKey);
     } else {
       window.localStorage.removeItem("gemini_api_key");
-      setApiKey("");
     }
+    notifyApiKeyChange();
     setIsKeyModalOpen(false);
   };
 
   const clearApiKey = () => {
     window.localStorage.removeItem("gemini_api_key");
-    setApiKey("");
     setApiKeyDraft("");
+    notifyApiKeyChange();
     setIsKeyModalOpen(false);
   };
 
