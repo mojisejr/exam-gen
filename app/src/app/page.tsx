@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState, type DragEvent } from "react";
+import { useMemo, useRef, useState, type DragEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { FileText, X } from "lucide-react";
 
 type ExamType = "auto" | "multiple_choice" | "true_false" | "subjective";
 
@@ -63,6 +63,7 @@ function getApiUrl(path: string) {
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [instruction, setInstruction] = useState("ขอข้อสอบแนววิเคราะห์");
   const [questionCount, setQuestionCount] = useState(50);
   const [language, setLanguage] = useState<(typeof LANGUAGE_OPTIONS)[number]>("ไทย");
@@ -89,6 +90,10 @@ export default function Home() {
     setDownloadUrl(null);
     setError(null);
     setBatchIndex(0);
+  };
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click();
   };
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
@@ -229,23 +234,65 @@ export default function Home() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div
-                className="glass-panel-dark flex min-h-[140px] flex-col items-center justify-center gap-2 border-dashed text-center"
+                className="glass-panel-dark flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-2 border-dashed text-center"
                 onDrop={handleDrop}
                 onDragOver={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (!file) openFileDialog();
+                }}
+                onKeyDown={(event) => {
+                  if (!file && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    openFileDialog();
+                  }
+                }}
+                role="button"
+                tabIndex={0}
               >
-                <p className="text-sm text-zinc-700">
-                  ลากไฟล์ PDF มาวาง หรือเลือกไฟล์ด้านล่าง
-                </p>
-                <Input
+                {file ? (
+                  <div className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/70 p-3 text-left shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-zinc-700 shadow-sm">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-zinc-800">{file.name}</p>
+                        <p className="text-xs text-zinc-500">PDF attached</p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Remove file"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleFileChange(null);
+                        if (fileInputRef.current) {
+                          fileInputRef.current.value = "";
+                        }
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-zinc-700">
+                      ลากไฟล์ PDF มาวาง หรือคลิกที่นี่เพื่อเลือกไฟล์
+                    </p>
+                    <p className="text-xs text-zinc-500">รองรับเฉพาะไฟล์ .pdf</p>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
                   type="file"
                   accept="application/pdf"
+                  className="sr-only"
                   onChange={(event) =>
                     handleFileChange(event.target.files?.[0] ?? null)
                   }
                 />
-                {file && (
-                  <p className="text-xs text-zinc-500">ไฟล์: {file.name}</p>
-                )}
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
