@@ -3,7 +3,7 @@ AI Engine Service
 Handles all interactions with Google Gemini API for content analysis and exam generation.
 """
 import os
-from typing import List, Set
+from typing import List, Optional, Set
 from google import genai
 from google.genai import types
 
@@ -66,7 +66,7 @@ def normalize_topic(text: str) -> str:
     return " ".join(text.strip().lower().split())
 
 
-def get_client() -> genai.Client:
+def get_client(api_key: Optional[str] = None) -> genai.Client:
     """
     Creates and returns a configured Gemini API client.
     
@@ -76,8 +76,10 @@ def get_client() -> genai.Client:
     Raises:
         ValueError: If API key is not configured.
     """
-    api_key = get_api_key()
-    return genai.Client(api_key=api_key)
+    resolved_key = api_key.strip() if api_key else ""
+    if not resolved_key:
+        resolved_key = get_api_key()
+    return genai.Client(api_key=resolved_key)
 
 
 def upload_to_gemini(client: genai.Client, path: str, mime_type: str = "application/pdf"):
