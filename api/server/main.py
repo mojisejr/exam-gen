@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.services.ai_engine import (
+from server.services.ai_engine import (
     get_client,
     upload_to_gemini,
     agent_analyst,
@@ -22,8 +22,8 @@ from app.services.ai_engine import (
     generate_batch,
     normalize_topic,
 )
-from app.services.doc_generator import generate_docx
-from app.schemas import ExamItem, Worksheet
+from server.services.doc_generator import generate_docx
+from server.schemas import ExamItem, Worksheet
 
 # Setup Paths
 BASE_DIR = Path(__file__).resolve().parents[2]

@@ -7,8 +7,8 @@ from typing import List, Optional, Set
 from google import genai
 from google.genai import types
 
-from app.config import get_api_key, get_prompt, MODEL_NAME
-from app.schemas import Worksheet
+from server.config import get_api_key, get_prompt, MODEL_NAME
+from server.schemas import Worksheet
 
 
 def build_exam_type_instruction(exam_type: str) -> str:
