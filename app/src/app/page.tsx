@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, X } from "lucide-react";
+import { FileText, Loader2, X } from "lucide-react";
 
 type ExamType = "auto" | "multiple_choice" | "true_false" | "subjective";
 
@@ -69,7 +69,6 @@ export default function Home() {
   const [language, setLanguage] = useState<(typeof LANGUAGE_OPTIONS)[number]>("ไทย");
   const [examType, setExamType] = useState<ExamType>("auto");
   const [status, setStatus] = useState("Idle");
-  const [brief, setBrief] = useState<string | null>(null);
   const [items, setItems] = useState<ExamItem[]>([]);
   const [preview, setPreview] = useState<string>("");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -84,7 +83,6 @@ export default function Home() {
 
   const handleFileChange = (nextFile: File | null) => {
     setFile(nextFile);
-    setBrief(null);
     setItems([]);
     setPreview("");
     setDownloadUrl(null);
@@ -135,7 +133,6 @@ export default function Home() {
     }
 
     const analyzeData = (await analyzeResponse.json()) as { brief: string };
-    setBrief(analyzeData.brief);
     setStatus("Generating batches");
 
     const collectedItems: ExamItem[] = [];
@@ -208,6 +205,30 @@ export default function Home() {
     setDownloadUrl(url);
     setStatus("Done");
   };
+
+  const isBusy = status !== "Idle" && status !== "Done" && status !== "Failed";
+  const currentBatchLabel =
+    batches.length > 0
+      ? Math.min(Math.max(batchIndex + 1, 1), batches.length)
+      : 0;
+  const buttonLabel = (() => {
+    switch (status) {
+      case "Analyzing PDF":
+        return "Analyzing...";
+      case "Generating batches":
+        return batches.length > 0
+          ? `Generating batch ${currentBatchLabel}/${batches.length}`
+          : "Generating batches...";
+      case "Rendering DOCX":
+        return "Rendering DOCX...";
+      case "Failed":
+        return "Try Again";
+      case "Done":
+        return "Generate Again";
+      default:
+        return "Start Generation";
+    }
+  })();
 
   return (
     <div className="min-h-screen">
@@ -356,16 +377,11 @@ export default function Home() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <Button onClick={handleGenerate} size="lg">
-                  Start Generation
+                <Button onClick={handleGenerate} size="lg" disabled={isBusy} className="gap-2">
+                  {isBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <span>{buttonLabel}</span>
                 </Button>
                 {error && <p className="text-sm text-red-500">{error}</p>}
-                {brief && (
-                  <div className="glass-panel-dark p-3 text-xs text-zinc-700">
-                    <p className="font-semibold">Design Brief</p>
-                    <p className="whitespace-pre-line">{brief}</p>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
