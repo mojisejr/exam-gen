@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import List, Optional
 from pydantic import BaseModel
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import Depends, FastAPI, UploadFile, File, Form, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -93,9 +93,16 @@ def reindex_exam_items(worksheet: Worksheet) -> Worksheet:
     return worksheet.model_copy(update={"items": reindexed_items})
 
 
+def get_api_key_header(
+    x_gemini_api_key: Optional[str] = Header(default=None, alias="X-Gemini-API-Key"),
+) -> Optional[str]:
+    return x_gemini_api_key
+
+
 @app.post("/generate-exam")
 async def generate_exam(
     file: UploadFile = File(..., description="PDF file to generate exam from"),
+    api_key: Optional[str] = Depends(get_api_key_header),
     instruction: str = Form(
         default="ขอข้อสอบแนววิเคราะห์",
         description="Instructions for exam generation (e.g., difficulty, topic focus, style)"
@@ -146,7 +153,7 @@ async def generate_exam(
             )
 
         # 3. Initialize AI Client
-        client = get_client()
+        client = get_client(api_key)
         
         # 3. Upload to Gemini
         gemini_file = upload_to_gemini(client, file_path)
@@ -206,6 +213,7 @@ async def generate_exam(
 @app.post("/api/analyze")
 async def analyze_pdf(
     file: UploadFile = File(..., description="PDF file to analyze"),
+    api_key: Optional[str] = Depends(get_api_key_header),
     instruction: str = Form(
         default="ขอข้อสอบแนววิเคราะห์",
         description="Instructions for exam generation"
@@ -229,7 +237,7 @@ async def analyze_pdf(
             shutil.copyfileobj(file.file, buffer)
             file_path = buffer.name
 
-        client = get_client()
+        client = get_client(api_key)
         gemini_file = upload_to_gemini(client, file_path)
         allowed_exam_types = {"auto", "multiple_choice", "true_false", "subjective"}
         if exam_type not in allowed_exam_types:
@@ -249,6 +257,7 @@ async def analyze_pdf(
 @app.post("/api/generate-batch")
 async def generate_batch_endpoint(
     file: UploadFile = File(..., description="PDF file to generate exam from"),
+    api_key: Optional[str] = Depends(get_api_key_header),
     design_brief: str = Form(..., description="Design brief from analyzer"),
     instruction: str = Form(
         default="ขอข้อสอบแนววิเคราะห์",
@@ -281,7 +290,7 @@ async def generate_batch_endpoint(
             shutil.copyfileobj(file.file, buffer)
             file_path = buffer.name
 
-        client = get_client()
+        client = get_client(api_key)
         gemini_file = upload_to_gemini(client, file_path)
         topics = [
             normalize_topic(topic)

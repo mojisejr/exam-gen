@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type DragEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { FileText, Loader2, X } from "lucide-react";
@@ -68,12 +69,22 @@ export default function Home() {
   const [questionCount, setQuestionCount] = useState(50);
   const [language, setLanguage] = useState<(typeof LANGUAGE_OPTIONS)[number]>("ไทย");
   const [examType, setExamType] = useState<ExamType>("auto");
+  const [apiKey, setApiKey] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem("gemini_api_key") ?? "";
+  });
+  const [apiKeyDraft, setApiKeyDraft] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem("gemini_api_key") ?? "";
+  });
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [status, setStatus] = useState("Idle");
   const [items, setItems] = useState<ExamItem[]>([]);
   const [preview, setPreview] = useState<string>("");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [batchIndex, setBatchIndex] = useState(0);
+
 
   const batches = useMemo(() => buildBatches(questionCount, 10), [questionCount]);
   const progressPercent = useMemo(() => {
@@ -100,6 +111,30 @@ export default function Home() {
     if (dropped) handleFileChange(dropped);
   };
 
+  const openKeyModal = () => {
+    setApiKeyDraft(apiKey);
+    setIsKeyModalOpen(true);
+  };
+
+  const saveApiKey = () => {
+    const nextKey = apiKeyDraft.trim();
+    if (nextKey) {
+      window.localStorage.setItem("gemini_api_key", nextKey);
+      setApiKey(nextKey);
+    } else {
+      window.localStorage.removeItem("gemini_api_key");
+      setApiKey("");
+    }
+    setIsKeyModalOpen(false);
+  };
+
+  const clearApiKey = () => {
+    window.localStorage.removeItem("gemini_api_key");
+    setApiKey("");
+    setApiKeyDraft("");
+    setIsKeyModalOpen(false);
+  };
+
   const handleGenerate = async () => {
     if (!file) {
       setError("กรุณาอัปโหลดไฟล์ PDF ก่อนเริ่ม");
@@ -120,9 +155,15 @@ export default function Home() {
     analyzeForm.append("language", language);
     analyzeForm.append("exam_type", examType);
 
+    const apiKeyValue = apiKey.trim();
+    const authHeaders: Record<string, string> = apiKeyValue
+      ? { "X-Gemini-API-Key": apiKeyValue }
+      : {};
+
     const analyzeResponse = await fetch(getApiUrl("/api/analyze"), {
       method: "POST",
       body: analyzeForm,
+      headers: authHeaders,
     });
 
     if (!analyzeResponse.ok) {
@@ -154,6 +195,7 @@ export default function Home() {
       const batchResponse = await fetch(getApiUrl("/api/generate-batch"), {
         method: "POST",
         body: generateForm,
+        headers: authHeaders,
       });
 
       if (!batchResponse.ok) {
@@ -184,7 +226,7 @@ export default function Home() {
     setStatus("Rendering DOCX");
     const renderResponse = await fetch(getApiUrl("/api/render-docx"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({
         worksheet: {
           ...worksheetMeta,
@@ -207,6 +249,7 @@ export default function Home() {
   };
 
   const isBusy = status !== "Idle" && status !== "Done" && status !== "Failed";
+  const hasApiKey = apiKey.trim().length > 0;
   const currentBatchLabel =
     batches.length > 0
       ? Math.min(Math.max(batchIndex + 1, 1), batches.length)
@@ -376,6 +419,25 @@ export default function Home() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-zinc-600">Gemini API Key</label>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/70 p-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-zinc-800">
+                      {hasApiKey ? "API Key stored" : "No API Key yet"}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {hasApiKey
+                        ? "กำลังใช้ Key ส่วนตัวสำหรับการประมวลผล"
+                        : "บันทึก Key ส่วนตัวเพื่อใช้งานแบบ BYOK"}
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={openKeyModal}>
+                    {hasApiKey ? "Update Key" : "Add Key"}
+                  </Button>
+                </div>
+              </div>
+
               <div className="flex flex-col gap-3">
                 <Button onClick={handleGenerate} size="lg" disabled={isBusy} className="gap-2">
                   {isBusy && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -443,6 +505,40 @@ export default function Home() {
           </div>
         </section>
       </main>
+      {isKeyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
+          <div className="glass-panel w-full max-w-lg rounded-2xl p-6 shadow-2xl">
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-zinc-900">Gemini API Key</h2>
+              <p className="text-sm text-zinc-600">
+                Key นี้จะถูกบันทึกไว้บนเบราว์เซอร์ของคุณเท่านั้น
+              </p>
+            </div>
+            <div className="mt-4 space-y-2">
+              <label className="text-xs font-medium text-zinc-600">API Key</label>
+              <Input
+                type="password"
+                placeholder="ใส่ Gemini API Key"
+                value={apiKeyDraft}
+                onChange={(event) => setApiKeyDraft(event.target.value)}
+              />
+            </div>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              {hasApiKey && (
+                <Button type="button" variant="ghost" onClick={clearApiKey}>
+                  Remove Key
+                </Button>
+              )}
+              <Button type="button" variant="ghost" onClick={() => setIsKeyModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={saveApiKey}>
+                Save Key
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
