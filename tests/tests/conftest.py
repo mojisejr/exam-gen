@@ -4,7 +4,7 @@ Pytest Configuration & Shared Fixtures
 import pytest
 import os
 from unittest.mock import MagicMock
-from app.schemas import Worksheet, ExamItem, Option
+from app.schemas import Worksheet, ExamItem, Option, QuestionType
 
 
 @pytest.fixture
@@ -92,6 +92,46 @@ def mock_worksheet():
                     Option(label="d", text="Madrid"),
                 ],
                 correct_answer="c"
+            )
+        ]
+    )
+
+
+@pytest.fixture
+def mock_true_false_worksheet():
+    """Returns a Worksheet with true/false questions for layout tests."""
+    return Worksheet(
+        title="True/False Worksheet",
+        subject="Science",
+        target_level="Grade 7",
+        items=[
+            ExamItem(
+                id=1,
+                question="แสงเดินทางด้วยความเร็วคงที่ในสุญญากาศใช่หรือไม่?",
+                type=QuestionType.TRUE_FALSE,
+                options=None,
+                correct_answer="ถูก",
+                explanation="ความเร็วแสงในสุญญากาศคงที่"
+            )
+        ]
+    )
+
+
+@pytest.fixture
+def mock_subjective_worksheet():
+    """Returns a Worksheet with subjective questions for layout tests."""
+    return Worksheet(
+        title="Subjective Worksheet",
+        subject="ภาษาไทย",
+        target_level="มัธยม",
+        items=[
+            ExamItem(
+                id=1,
+                question="อธิบายความหมายของคำว่า \"วรรณศิลป์\" พร้อมยกตัวอย่างประกอบ",
+                type=QuestionType.SUBJECTIVE,
+                options=None,
+                correct_answer="คำอธิบายเชิงวิเคราะห์",
+                explanation=None
             )
         ]
     )
