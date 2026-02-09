@@ -46,6 +46,7 @@ PROMPT_TEMPLATES = {
 
 ข้อกำหนด: จำนวนข้อ {question_count} ข้อ, ภาษา {language}
 Instruction จากผู้ใช้: "{instruction}"
+ข้อกำหนดรูปแบบข้อสอบ: {exam_type_instruction}
 
 บริบทของงานย่อย: {batch_info}
 หัวข้อที่ต้องหลีกเลี่ยง: {avoid_topics}
@@ -61,7 +62,12 @@ Instruction จากผู้ใช้: "{instruction}"
 2. ถ้าข้อไหนที่เหมาะกับการมีรูปประกอบ ให้ใส่ description ใน `image_prompt` (เป็นภาษาอังกฤษสำหรับ gen รูป เช่น "Diagram of...") ถ้าไม่มีให้ใส่ null
 3. เนื้อหาต้องถูกต้องตาม PDF
 4. ภาษาที่ใช้ในข้อสอบ ต้องเป็น {language} เท่านั้น
-5. ช้อยส์ต้องมี 4 ตัวเลือก (ก, ข, ค, ง)
+5. ทุกข้อมีฟิลด์ `type` ระบุรูปแบบคำถาม: `multiple_choice` | `true_false` | `subjective`
+6. กติกาตามประเภท:
+    - `multiple_choice`: ต้องมี `options` 4 ตัวเลือก (ก, ข, ค, ง) และ `correct_answer` เป็นหนึ่งใน ก/ข/ค/ง
+    - `true_false`: ต้องมี `options` 2 ตัวเลือก (ถูก, ผิด) และ `correct_answer` เป็นหนึ่งใน ถูก/ผิด
+    - `subjective`: `options` ต้องเป็น null และ `correct_answer` เป็นคำตอบแบบสั้นที่คาดหวัง
+7. โครงสร้าง JSON ต้อง Strict และครบทุกฟิลด์ตาม Schema
 
 Output เป็น JSON ตาม Schema เท่านั้น"""
 }

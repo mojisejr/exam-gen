@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import List, Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +18,9 @@ from app.services.ai_engine import (
     upload_to_gemini,
     agent_analyst,
     agent_architect,
-    calculate_batches
+    calculate_batches,
+    generate_batch,
+    normalize_topic,
 )
 from app.services.doc_generator import generate_docx
 from app.schemas import ExamItem, Worksheet
@@ -38,6 +41,10 @@ def get_runtime_output_dir() -> Path:
     if os.getenv("VERCEL"):
         return Path(tempfile.gettempdir()) / "exam-gen-output"
     return OUTPUT_DIR
+
+
+class RenderDocxRequest(BaseModel):
+    worksheet: Worksheet
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -62,11 +69,11 @@ if os.path.exists(STATIC_DIR):
 
 @app.get("/")
 async def read_root():
-    """Serve the main UI."""
+    """Return API status info (UI handled by Next.js)."""
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
-    return {"message": "Exam Gen API is running. No UI found."}
+    return {"message": "Exam Gen API is running."}
 
 
 def reindex_exam_items(worksheet: Worksheet) -> Worksheet:
@@ -100,6 +107,10 @@ async def generate_exam(
     language: str = Form(
         default="ไทย",
         description="Language for generated questions (ไทย or English)"
+    ),
+    exam_type: str = Form(
+        default="auto",
+        description="Preferred exam type (auto, multiple_choice, true_false, subjective)"
     )
 ):
     """
@@ -127,6 +138,13 @@ async def generate_exam(
         if language not in allowed_languages:
             raise HTTPException(status_code=422, detail="Invalid language. Allowed: ไทย, English")
 
+        allowed_exam_types = {"auto", "multiple_choice", "true_false", "subjective"}
+        if exam_type not in allowed_exam_types:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid exam_type. Allowed: auto, multiple_choice, true_false, subjective"
+            )
+
         # 3. Initialize AI Client
         client = get_client()
         
@@ -137,7 +155,9 @@ async def generate_exam(
         brief = agent_analyst(client, gemini_file, instruction, question_count, language)
         
         # 5. Agent 2: Design exam
-        worksheet = agent_architect(client, gemini_file, brief, instruction, question_count, language)
+        worksheet = agent_architect(
+            client, gemini_file, brief, instruction, question_count, language, exam_type
+        )
 
         # 6. Reindex items and prepare metadata
         worksheet = reindex_exam_items(worksheet)
@@ -181,6 +201,138 @@ async def generate_exam(
     finally:
         if "file_path" in locals() and os.path.exists(file_path):
             os.remove(file_path)
+
+
+@app.post("/api/analyze")
+async def analyze_pdf(
+    file: UploadFile = File(..., description="PDF file to analyze"),
+    instruction: str = Form(
+        default="ขอข้อสอบแนววิเคราะห์",
+        description="Instructions for exam generation"
+    ),
+    question_count: int = Form(
+        default=10,
+        description="Number of questions to generate"
+    ),
+    language: str = Form(
+        default="ไทย",
+        description="Language for generated questions"
+    ),
+    exam_type: str = Form(
+        default="auto",
+        description="Preferred exam type (auto, multiple_choice, true_false, subjective)"
+    ),
+):
+    """Analyze PDF and return a design brief for batch generation."""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            file_path = buffer.name
+
+        client = get_client()
+        gemini_file = upload_to_gemini(client, file_path)
+        allowed_exam_types = {"auto", "multiple_choice", "true_false", "subjective"}
+        if exam_type not in allowed_exam_types:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid exam_type. Allowed: auto, multiple_choice, true_false, subjective"
+            )
+
+        brief = agent_analyst(client, gemini_file, instruction, question_count, language)
+
+        return {"brief": brief}
+    finally:
+        if "file_path" in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+
+
+@app.post("/api/generate-batch")
+async def generate_batch_endpoint(
+    file: UploadFile = File(..., description="PDF file to generate exam from"),
+    design_brief: str = Form(..., description="Design brief from analyzer"),
+    instruction: str = Form(
+        default="ขอข้อสอบแนววิเคราะห์",
+        description="Instructions for exam generation"
+    ),
+    question_count: int = Form(
+        default=10,
+        description="Number of questions to generate in this batch"
+    ),
+    language: str = Form(
+        default="ไทย",
+        description="Language for generated questions"
+    ),
+    batch_info: str = Form(
+        default="Batch 1/1",
+        description="Batch progress metadata"
+    ),
+    avoid_topics: str = Form(
+        default="ไม่มี",
+        description="Topics to avoid, comma-separated"
+    ),
+    exam_type: str = Form(
+        default="auto",
+        description="Preferred exam type (auto, multiple_choice, true_false, subjective)"
+    ),
+):
+    """Generate a single batch of questions with avoid-topics control."""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            file_path = buffer.name
+
+        client = get_client()
+        gemini_file = upload_to_gemini(client, file_path)
+        topics = [
+            normalize_topic(topic)
+            for topic in avoid_topics.split(",")
+            if topic.strip()
+        ]
+
+        allowed_exam_types = {"auto", "multiple_choice", "true_false", "subjective"}
+        if exam_type not in allowed_exam_types:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid exam_type. Allowed: auto, multiple_choice, true_false, subjective"
+            )
+
+        worksheet = generate_batch(
+            client=client,
+            file_obj=gemini_file,
+            design_brief=design_brief,
+            instruction=instruction,
+            question_count=question_count,
+            language=language,
+            batch_info=batch_info,
+            avoid_topics=topics,
+            exam_type=exam_type,
+        )
+
+        new_topics = [normalize_topic(item.question) for item in worksheet.items]
+
+        return {"worksheet": worksheet, "new_topics": new_topics}
+    finally:
+        if "file_path" in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+
+
+@app.post("/api/render-docx")
+async def render_docx(request: RenderDocxRequest):
+    """Render DOCX from a worksheet payload and return the file."""
+    output_filename = f"worksheet_{os.urandom(4).hex()}.docx"
+    runtime_output_dir = get_runtime_output_dir()
+    runtime_output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = runtime_output_dir / output_filename
+
+    # Ensure items are indexed correctly 1..N before rendering
+    worksheet = reindex_exam_items(request.worksheet)
+    generate_docx(worksheet, str(output_path))
+
+    return FileResponse(
+        str(output_path),
+        filename=output_filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 
 
 @app.get("/download/{filename}")

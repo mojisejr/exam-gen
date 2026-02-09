@@ -11,6 +11,28 @@ from app.config import get_api_key, get_prompt, MODEL_NAME
 from app.schemas import Worksheet
 
 
+def build_exam_type_instruction(exam_type: str) -> str:
+    """
+    Build a strict instruction string for exam type selection.
+
+    Args:
+        exam_type: Exam type preference (auto | multiple_choice | true_false | subjective).
+
+    Returns:
+        Thai instruction string to guide the architect prompt.
+    """
+    normalized = exam_type.strip().lower()
+    if normalized in {"", "auto"}:
+        return "ให้เลือกรูปแบบข้อสอบที่เหมาะสมจากเนื้อหา (สามารถผสมได้)"
+    if normalized == "multiple_choice":
+        return "ต้องออกข้อสอบแบบ multiple_choice เท่านั้น"
+    if normalized == "true_false":
+        return "ต้องออกข้อสอบแบบ true_false เท่านั้น"
+    if normalized == "subjective":
+        return "ต้องออกข้อสอบแบบ subjective เท่านั้น"
+    return "ให้เลือกรูปแบบข้อสอบที่เหมาะสมจากเนื้อหา (สามารถผสมได้)"
+
+
 def calculate_batches(total_count: int, max_batch: int = 10) -> List[int]:
     """
     Splits total_count into batch sizes capped by max_batch.
@@ -39,7 +61,8 @@ def calculate_batches(total_count: int, max_batch: int = 10) -> List[int]:
     return batches
 
 
-def _normalize_topic(text: str) -> str:
+def normalize_topic(text: str) -> str:
+    """Normalize text for deduplication across batches."""
     return " ".join(text.strip().lower().split())
 
 
@@ -132,7 +155,8 @@ def agent_architect(
     design_brief: str,
     instruction: str,
     question_count: int,
-    language: str
+    language: str,
+    exam_type: str
 ) -> Worksheet:
     """
     Agent 2: Designs the exam worksheet based on the design brief.
@@ -168,7 +192,8 @@ def agent_architect(
             question_count=batch_size,
             language=language,
             batch_info=batch_info,
-            avoid_topics=avoid_topics
+            avoid_topics=avoid_topics,
+            exam_type_instruction=build_exam_type_instruction(exam_type)
         )
 
         try:
@@ -192,7 +217,7 @@ def agent_architect(
             worksheet_meta = parsed
 
         for item in parsed.items:
-            normalized = _normalize_topic(item.question)
+            normalized = normalize_topic(item.question)
             if normalized in existing_topics:
                 continue
             existing_topics.add(normalized)
@@ -207,3 +232,59 @@ def agent_architect(
         target_level=worksheet_meta.target_level,
         items=aggregated_items
     )
+
+
+def generate_batch(
+    client: genai.Client,
+    file_obj,
+    design_brief: str,
+    instruction: str,
+    question_count: int,
+    language: str,
+    batch_info: str,
+    avoid_topics: list[str],
+    exam_type: str,
+) -> Worksheet:
+    """
+    Generates a single batch of questions with avoid-topics control.
+
+    Args:
+        client: Authenticated Gemini client.
+        file_obj: Uploaded file object from Gemini.
+        design_brief: Design brief from agent_analyst.
+        instruction: User instruction.
+        question_count: Number of questions for this batch.
+        language: Output language.
+        batch_info: Batch indicator string.
+        avoid_topics: List of normalized topics to avoid.
+
+    Returns:
+        Worksheet with batch items.
+    """
+    avoid_text = ", ".join(sorted(avoid_topics)) if avoid_topics else "ไม่มี"
+
+    prompt = get_prompt(
+        "architect",
+        instruction=instruction,
+        design_brief=design_brief,
+        question_count=question_count,
+        language=language,
+        batch_info=batch_info,
+        avoid_topics=avoid_text,
+        exam_type_instruction=build_exam_type_instruction(exam_type),
+    )
+
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=[file_obj, prompt],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=Worksheet,
+        ),
+    )
+
+    parsed = response.parsed
+    if parsed is None:
+        raise ValueError("[Batch] Empty response from Gemini")
+
+    return parsed

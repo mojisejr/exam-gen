@@ -5,7 +5,29 @@ Handles .docx file generation with proper Thai language formatting.
 from docx import Document
 from docx.shared import Pt, Inches
 
-from app.schemas import Worksheet
+from app.schemas import QuestionType, Worksheet
+
+
+def _add_multiple_choice(doc: Document, item) -> None:
+    options = item.options or []
+    for opt in options:
+        p_opt = doc.add_paragraph()
+        p_opt.paragraph_format.left_indent = Inches(0.5)
+        text = opt.text if opt.text.strip().startswith(opt.label) else f"{opt.label}) {opt.text}"
+        p_opt.add_run(text)
+
+
+def _add_true_false(doc: Document) -> None:
+    for label in ("ถูก", "ผิด"):
+        p_opt = doc.add_paragraph()
+        p_opt.paragraph_format.left_indent = Inches(0.5)
+        p_opt.add_run(f"( ) {label}")
+
+
+def _add_subjective(doc: Document) -> None:
+    p_line = doc.add_paragraph()
+    p_line.paragraph_format.left_indent = Inches(0.5)
+    p_line.add_run("........................................................")
 
 
 def generate_docx(worksheet: Worksheet, output_path: str) -> None:
@@ -60,13 +82,13 @@ def generate_docx(worksheet: Worksheet, output_path: str) -> None:
             run_img.font.size = Pt(10)
             doc.add_paragraph()  # Add spacing
         
-        # Options
-        for opt in item.options:
-            p_opt = doc.add_paragraph()
-            p_opt.paragraph_format.left_indent = Inches(0.5)
-            # Ensure label is prefixed if not already
-            text = opt.text if opt.text.strip().startswith(opt.label) else f"{opt.label}) {opt.text}"
-            p_opt.add_run(text)
+        # Options / Input Area
+        if item.type == QuestionType.TRUE_FALSE:
+            _add_true_false(doc)
+        elif item.type == QuestionType.SUBJECTIVE:
+            _add_subjective(doc)
+        else:
+            _add_multiple_choice(doc, item)
         
     # Answer Key (New Page)
     doc.add_page_break()
