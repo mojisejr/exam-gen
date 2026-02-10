@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
+import { upload } from "@vercel/blob/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +42,7 @@ const EXAM_TYPE_OPTIONS: { value: ExamType; label: string }[] = [
   { value: "true_false", label: "เฉพาะถูก/ผิด (True/False)" },
   { value: "subjective", label: "เฉพาะอัตนัย (Subjective)" },
 ];
+const MAX_VERCEL_BODY_BYTES = 4_500_000;
 
 function buildBatches(total: number, size: number) {
   const batches: number[] = [];
@@ -60,6 +62,22 @@ function getApiBase() {
 function getApiUrl(path: string) {
   const base = getApiBase();
   return `${base}${path}`;
+}
+
+async function uploadPdfToBlob(file: File) {
+  const result = await upload(file.name, file, {
+    access: "public",
+    handleUploadUrl: "/api/upload",
+  });
+  return result.url;
+}
+
+async function cleanupBlob(url: string) {
+  await fetch("/api/upload/cleanup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
 }
 
 export default function Home() {
@@ -164,104 +182,130 @@ export default function Home() {
     setPreview("");
     setDownloadUrl(null);
 
-    const analyzeForm = new FormData();
-    analyzeForm.append("file", file);
-    analyzeForm.append("instruction", instruction);
-    analyzeForm.append("question_count", String(questionCount));
-    analyzeForm.append("language", language);
-    analyzeForm.append("exam_type", examType);
+    const shouldUseBlob = file.size >= MAX_VERCEL_BODY_BYTES;
+    let blobUrl: string | null = null;
 
     const apiKeyValue = apiKey.trim();
     const authHeaders: Record<string, string> = apiKeyValue
       ? { "X-Gemini-API-Key": apiKeyValue }
       : {};
+    try {
+      if (shouldUseBlob) {
+        setStatus("Uploading PDF");
+        blobUrl = await uploadPdfToBlob(file);
+        setStatus("Analyzing PDF");
+      }
 
-    const analyzeResponse = await fetch(getApiUrl("/api/analyze"), {
-      method: "POST",
-      body: analyzeForm,
-      headers: authHeaders,
-    });
+      const analyzeForm = new FormData();
+      if (blobUrl) {
+        analyzeForm.append("file_url", blobUrl);
+      } else {
+        analyzeForm.append("file", file);
+      }
+      analyzeForm.append("instruction", instruction);
+      analyzeForm.append("question_count", String(questionCount));
+      analyzeForm.append("language", language);
+      analyzeForm.append("exam_type", examType);
 
-    if (!analyzeResponse.ok) {
-      const payload = await analyzeResponse.json().catch(() => ({}));
-      setError(payload.detail ?? "วิเคราะห์เอกสารไม่สำเร็จ");
-      setStatus("Failed");
-      return;
-    }
-
-    const analyzeData = (await analyzeResponse.json()) as { brief: string };
-    setStatus("Generating batches");
-
-    const collectedItems: ExamItem[] = [];
-    let avoidTopics: string[] = [];
-    let worksheetMeta: Omit<Worksheet, "items"> | null = null;
-
-    for (let index = 0; index < batches.length; index += 1) {
-      const batchSize = batches[index];
-      const generateForm = new FormData();
-      generateForm.append("file", file);
-      generateForm.append("instruction", instruction);
-      generateForm.append("question_count", String(batchSize));
-      generateForm.append("language", language);
-      generateForm.append("design_brief", analyzeData.brief);
-      generateForm.append("batch_info", `Batch ${index + 1}/${batches.length}`);
-      generateForm.append("avoid_topics", avoidTopics.join(", ") || "ไม่มี");
-      generateForm.append("exam_type", examType);
-
-      const batchResponse = await fetch(getApiUrl("/api/generate-batch"), {
+      const analyzeResponse = await fetch(getApiUrl("/api/analyze"), {
         method: "POST",
-        body: generateForm,
+        body: analyzeForm,
         headers: authHeaders,
       });
 
-      if (!batchResponse.ok) {
-        const payload = await batchResponse.json().catch(() => ({}));
-        setError(payload.detail ?? "เจนข้อสอบบางรอบไม่สำเร็จ");
+      if (!analyzeResponse.ok) {
+        const payload = await analyzeResponse.json().catch(() => ({}));
+        setError(payload.detail ?? "วิเคราะห์เอกสารไม่สำเร็จ");
         setStatus("Failed");
         return;
       }
 
-      const batchData = (await batchResponse.json()) as BatchResponse;
-      if (!worksheetMeta) {
-        const { title, subject, target_level } = batchData.worksheet;
-        worksheetMeta = { title, subject, target_level };
+      const analyzeData = (await analyzeResponse.json()) as { brief: string };
+      setStatus("Generating batches");
+
+      const collectedItems: ExamItem[] = [];
+      let avoidTopics: string[] = [];
+      let worksheetMeta: Omit<Worksheet, "items"> | null = null;
+
+      for (let index = 0; index < batches.length; index += 1) {
+        const batchSize = batches[index];
+        const generateForm = new FormData();
+        if (blobUrl) {
+          generateForm.append("file_url", blobUrl);
+        } else {
+          generateForm.append("file", file);
+        }
+        generateForm.append("instruction", instruction);
+        generateForm.append("question_count", String(batchSize));
+        generateForm.append("language", language);
+        generateForm.append("design_brief", analyzeData.brief);
+        generateForm.append("batch_info", `Batch ${index + 1}/${batches.length}`);
+        generateForm.append("avoid_topics", avoidTopics.join(", ") || "ไม่มี");
+        generateForm.append("exam_type", examType);
+
+        const batchResponse = await fetch(getApiUrl("/api/generate-batch"), {
+          method: "POST",
+          body: generateForm,
+          headers: authHeaders,
+        });
+
+        if (!batchResponse.ok) {
+          const payload = await batchResponse.json().catch(() => ({}));
+          setError(payload.detail ?? "เจนข้อสอบบางรอบไม่สำเร็จ");
+          setStatus("Failed");
+          return;
+        }
+
+        const batchData = (await batchResponse.json()) as BatchResponse;
+        if (!worksheetMeta) {
+          const { title, subject, target_level } = batchData.worksheet;
+          worksheetMeta = { title, subject, target_level };
+        }
+        collectedItems.push(...batchData.worksheet.items);
+        avoidTopics = [...avoidTopics, ...batchData.new_topics];
+        setItems([...collectedItems]);
+        setPreview(JSON.stringify(batchData.worksheet.items, null, 2));
+        setBatchIndex(index + 1);
       }
-      collectedItems.push(...batchData.worksheet.items);
-      avoidTopics = [...avoidTopics, ...batchData.new_topics];
-      setItems([...collectedItems]);
-      setPreview(JSON.stringify(batchData.worksheet.items, null, 2));
-      setBatchIndex(index + 1);
+
+      if (!worksheetMeta) {
+        setError("ไม่พบข้อมูล metadata จากการเจนข้อสอบ");
+        setStatus("Failed");
+        return;
+      }
+
+      setStatus("Rendering DOCX");
+      const renderResponse = await fetch(getApiUrl("/api/render-docx"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          worksheet: {
+            ...worksheetMeta,
+            items: collectedItems,
+          },
+        }),
+      });
+
+      if (!renderResponse.ok) {
+        const payload = await renderResponse.json().catch(() => ({}));
+        setError(payload.detail ?? "เรนเดอร์ไฟล์ไม่สำเร็จ");
+        setStatus("Failed");
+        return;
+      }
+
+      const blob = await renderResponse.blob();
+      const url = URL.createObjectURL(blob);
+      setDownloadUrl(url);
+      setStatus("Done");
+    } finally {
+      if (blobUrl) {
+        try {
+          await cleanupBlob(blobUrl);
+        } catch (cleanupError) {
+          console.warn("Blob cleanup failed", cleanupError);
+        }
+      }
     }
-
-    if (!worksheetMeta) {
-      setError("ไม่พบข้อมูล metadata จากการเจนข้อสอบ");
-      setStatus("Failed");
-      return;
-    }
-
-    setStatus("Rendering DOCX");
-    const renderResponse = await fetch(getApiUrl("/api/render-docx"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders },
-      body: JSON.stringify({
-        worksheet: {
-          ...worksheetMeta,
-          items: collectedItems,
-        },
-      }),
-    });
-
-    if (!renderResponse.ok) {
-      const payload = await renderResponse.json().catch(() => ({}));
-      setError(payload.detail ?? "เรนเดอร์ไฟล์ไม่สำเร็จ");
-      setStatus("Failed");
-      return;
-    }
-
-    const blob = await renderResponse.blob();
-    const url = URL.createObjectURL(blob);
-    setDownloadUrl(url);
-    setStatus("Done");
   };
 
   const isBusy = status !== "Idle" && status !== "Done" && status !== "Failed";
@@ -272,6 +316,8 @@ export default function Home() {
       : 0;
   const buttonLabel = (() => {
     switch (status) {
+      case "Uploading PDF":
+        return "Uploading...";
       case "Analyzing PDF":
         return "Analyzing...";
       case "Generating batches":
