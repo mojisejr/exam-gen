@@ -3,12 +3,5 @@
     { "src": "api/index.py", "use": "@vercel/python" },
     { "src": "package.json", "use": "@vercel/next" }
   ],
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index.py" }],
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 300,
-      "memory": 1024,
-      "includeFiles": "api/server/**"
-    }
-  }
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index.py" }]
 }
