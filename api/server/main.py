@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import List, Optional
+import httpx
 from pydantic import BaseModel
 from fastapi import Depends, FastAPI, UploadFile, File, Form, Header, HTTPException
 from fastapi.responses import FileResponse
@@ -41,6 +42,20 @@ def get_runtime_output_dir() -> Path:
     if os.getenv("VERCEL"):
         return Path(tempfile.gettempdir()) / "exam-gen-output"
     return OUTPUT_DIR
+
+
+async def download_blob(file_url: str) -> str:
+    """Download a blob URL into a temporary PDF file and return its path."""
+    if not file_url.startswith("http"):
+        raise HTTPException(status_code=422, detail="Invalid file_url")
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.get(file_url)
+        response.raise_for_status()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+        buffer.write(response.content)
+        return buffer.name
 
 
 class RenderDocxRequest(BaseModel):
@@ -101,7 +116,8 @@ def get_api_key_header(
 
 @app.post("/generate-exam")
 async def generate_exam(
-    file: UploadFile = File(..., description="PDF file to generate exam from"),
+    file: Optional[UploadFile] = File(None, description="PDF file to generate exam from"),
+    file_url: Optional[str] = Form(default=None, description="Blob URL to PDF file"),
     api_key: Optional[str] = Depends(get_api_key_header),
     instruction: str = Form(
         default="ขอข้อสอบแนววิเคราะห์",
@@ -131,10 +147,15 @@ async def generate_exam(
         JSON response with download URL and brief.
     """
     try:
-        # 1. Save uploaded file temporarily (serverless-safe)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            file_path = buffer.name
+        # 1. Resolve PDF source (UploadFile or Blob URL)
+        if file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                file_path = buffer.name
+        elif file_url:
+            file_path = await download_blob(file_url)
+        else:
+            raise HTTPException(status_code=422, detail="file or file_url is required")
         
         # 2. Validate inputs
         allowed_counts = {10, 20, 30, 50}
@@ -212,7 +233,8 @@ async def generate_exam(
 
 @app.post("/api/analyze")
 async def analyze_pdf(
-    file: UploadFile = File(..., description="PDF file to analyze"),
+    file: Optional[UploadFile] = File(None, description="PDF file to analyze"),
+    file_url: Optional[str] = Form(default=None, description="Blob URL to PDF file"),
     api_key: Optional[str] = Depends(get_api_key_header),
     instruction: str = Form(
         default="ขอข้อสอบแนววิเคราะห์",
@@ -233,9 +255,14 @@ async def analyze_pdf(
 ):
     """Analyze PDF and return a design brief for batch generation."""
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            file_path = buffer.name
+        if file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                file_path = buffer.name
+        elif file_url:
+            file_path = await download_blob(file_url)
+        else:
+            raise HTTPException(status_code=422, detail="file or file_url is required")
 
         client = get_client(api_key)
         gemini_file = upload_to_gemini(client, file_path)
@@ -256,7 +283,8 @@ async def analyze_pdf(
 
 @app.post("/api/generate-batch")
 async def generate_batch_endpoint(
-    file: UploadFile = File(..., description="PDF file to generate exam from"),
+    file: Optional[UploadFile] = File(None, description="PDF file to generate exam from"),
+    file_url: Optional[str] = Form(default=None, description="Blob URL to PDF file"),
     api_key: Optional[str] = Depends(get_api_key_header),
     design_brief: str = Form(..., description="Design brief from analyzer"),
     instruction: str = Form(
@@ -286,9 +314,14 @@ async def generate_batch_endpoint(
 ):
     """Generate a single batch of questions with avoid-topics control."""
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            file_path = buffer.name
+        if file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                file_path = buffer.name
+        elif file_url:
+            file_path = await download_blob(file_url)
+        else:
+            raise HTTPException(status_code=422, detail="file or file_url is required")
 
         client = get_client(api_key)
         gemini_file = upload_to_gemini(client, file_path)
