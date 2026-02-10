@@ -64,8 +64,25 @@ function getApiUrl(path: string) {
   return `${base}${path}`;
 }
 
+function sanitizeFilename(originalName: string) {
+  const fallbackBase = `exam-gen-${Date.now()}`;
+  const lastDotIndex = originalName.lastIndexOf(".");
+  const hasExtension = lastDotIndex > 0 && lastDotIndex < originalName.length - 1;
+  const extension = hasExtension ? originalName.slice(lastDotIndex) : ".pdf";
+  const baseName = hasExtension ? originalName.slice(0, lastDotIndex) : originalName;
+  const normalized = baseName
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9-_ ]+/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "");
+  const safeBase = normalized || fallbackBase;
+  return `${safeBase}${extension}`;
+}
+
 async function uploadPdfToBlob(file: File) {
-  const result = await upload(file.name, file, {
+  const safeFilename = sanitizeFilename(file.name);
+  const result = await upload(safeFilename, file, {
     access: "public",
     handleUploadUrl: "/api/upload",
   });

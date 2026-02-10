@@ -2,6 +2,7 @@
 Main FastAPI Application
 Controller layer that orchestrates AI and Document services.
 """
+import asyncio
 import os
 import shutil
 import tempfile
@@ -53,12 +54,38 @@ async def download_blob(file_url: str) -> str:
         raise HTTPException(status_code=422, detail="Invalid file_url")
 
     async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.get(file_url)
-        response.raise_for_status()
+        last_error: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                response = await client.get(file_url)
+                response.raise_for_status()
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
+                    buffer.write(response.content)
+                    return buffer.name
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                status_code = exc.response.status_code if exc.response else 500
+                if status_code == 404 and attempt < 2:
+                    await asyncio.sleep(1)
+                    continue
+                raise HTTPException(
+                    status_code=status_code,
+                    detail="Failed to download blob file.",
+                ) from exc
+            except httpx.RequestError as exc:
+                last_error = exc
+                if attempt < 2:
+                    await asyncio.sleep(1)
+                    continue
+                raise HTTPException(
+                    status_code=502,
+                    detail="Failed to reach blob storage.",
+                ) from exc
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as buffer:
-        buffer.write(response.content)
-        return buffer.name
+        if last_error:
+            raise HTTPException(status_code=502, detail="Failed to download blob file.") from last_error
+
+    raise HTTPException(status_code=502, detail="Failed to download blob file.")
 
 
 class RenderDocxRequest(BaseModel):
