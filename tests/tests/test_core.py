@@ -5,9 +5,9 @@ Tests the Brain: Config loading and prompt templating.
 import pytest
 import os
 from unittest.mock import patch
-from app.config import get_api_key, get_prompt, MODEL_NAME
-from app.main import reindex_exam_items
-from app.schemas import Worksheet, ExamItem, Option
+from server.config import get_api_key, get_prompt, MODEL_NAME
+from server.main import reindex_exam_items
+from server.schemas import Worksheet, ExamItem, Option
 
 
 def test_model_name_configured():
@@ -60,17 +60,17 @@ def test_prompt_invalid_type():
 def test_api_key_guard_missing():
     """Test that missing API key raises ValueError."""
     import importlib
-    import app.config
+    import server.config
     
     # Clear environment AND patch load_dotenv to prevent .env file loading
     with patch.dict(os.environ, {}, clear=True):
         with patch("dotenv.load_dotenv"):
             # Reload the module to force re-evaluation under new environment
-            importlib.reload(app.config)
+            importlib.reload(server.config)
             
             # Now test should raise ValueError
             with pytest.raises(ValueError, match="GEMINI_API_KEY not found"):
-                app.config.get_api_key()
+                server.config.get_api_key()
 
 
 def test_api_key_success():
@@ -78,35 +78,35 @@ def test_api_key_success():
     with patch.dict(os.environ, {"GEMINI_API_KEY": "test_key_123"}):
         # Reload config to pick up new env
         import importlib
-        import app.config
-        importlib.reload(app.config)
-        
-        key = app.config.get_api_key()
+        import server.config
+        importlib.reload(server.config)
+
+        key = server.config.get_api_key()
         assert key == "test_key_123"
 
 
 def test_calculate_batches_exact():
     """Test batch calculation for exact division."""
-    from app.services.ai_engine import calculate_batches
+    from server.services.ai_engine import calculate_batches
     assert calculate_batches(50, 10) == [10, 10, 10, 10, 10]
 
 
 def test_calculate_batches_remainder():
     """Test batch calculation when total is not divisible by max_batch."""
-    from app.services.ai_engine import calculate_batches
+    from server.services.ai_engine import calculate_batches
     assert calculate_batches(25, 10) == [10, 10, 5]
 
 
 def test_calculate_batches_invalid_total():
     """Test batch calculation invalid total_count."""
-    from app.services.ai_engine import calculate_batches
+    from server.services.ai_engine import calculate_batches
     with pytest.raises(ValueError):
         calculate_batches(0, 10)
 
 
 def test_calculate_batches_invalid_max_batch():
     """Test batch calculation invalid max_batch."""
-    from app.services.ai_engine import calculate_batches
+    from server.services.ai_engine import calculate_batches
     with pytest.raises(ValueError):
         calculate_batches(10, 0)
 

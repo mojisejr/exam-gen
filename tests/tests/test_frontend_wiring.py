@@ -13,7 +13,7 @@ from typing import List
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-from app.main import app, get_runtime_output_dir
+from server.main import app, get_runtime_output_dir
 
 DEFAULT_PDF_PATH = "/Users/non/dev/opilot/ψ/lab/exam-gen/data/test1.pdf"
 DEFAULT_ORIGIN = "http://localhost:3000"

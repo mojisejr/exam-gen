@@ -4,7 +4,7 @@ Tests the Muscle: Document generation logic.
 """
 import os
 from docx import Document
-from app.services.doc_generator import generate_docx
+from server.services.doc_generator import generate_docx
 
 
 def test_docx_structure(mock_worksheet, tmp_path):
@@ -103,7 +103,7 @@ def test_docx_thai_stress_text(tmp_path):
         ],
     }
 
-    from app.schemas import Worksheet
+    from server.schemas import Worksheet
 
     generate_docx(Worksheet(**worksheet), str(output_path))
 

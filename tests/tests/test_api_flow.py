@@ -5,7 +5,7 @@ Tests the Face: End-to-End Integration via FastAPI endpoints.
 import os
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
-from app.main import app
+from server.main import app
 
 
 client = TestClient(app)
@@ -31,21 +31,21 @@ def test_root_endpoint_serves_ui():
 def test_generate_exam_endpoint(sample_pdf, mock_gemini_client, tmp_path):
     """Test the main exam generation endpoint with mocked AI."""
     # Mock at the destination (where main.py imports from)
-    with patch("app.main.get_client", return_value=mock_gemini_client):
-        with patch("app.main.upload_to_gemini") as mock_upload:
+    with patch("server.main.get_client", return_value=mock_gemini_client):
+        with patch("server.main.upload_to_gemini") as mock_upload:
             # Mock file upload
             mock_file_obj = MagicMock()
             mock_file_obj.uri = "mock://uri"
             mock_upload.return_value = mock_file_obj
             
             # Mock AI agents to return deterministic results
-            with patch("app.main.agent_analyst") as mock_analyst:
-                with patch("app.main.agent_architect") as mock_architect:
+            with patch("server.main.agent_analyst") as mock_analyst:
+                with patch("server.main.agent_architect") as mock_architect:
                     # Mock analyst returns a design brief
                     mock_analyst.return_value = "Mock Design Brief: 5 questions, analytical style."
                     
                     # Mock architect returns a valid Worksheet (no real AI call)
-                    from app.schemas import Worksheet, ExamItem, Option
+                    from server.schemas import Worksheet, ExamItem, Option
                     mock_worksheet = Worksheet(
                         title="แบบทดสอบ",
                         subject="วิชาทดสอบ",

@@ -1,10 +1,19 @@
 """
 Pytest Configuration & Shared Fixtures
 """
-import pytest
 import os
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock
-from app.schemas import Worksheet, ExamItem, Option, QuestionType
+
+import pytest
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+API_DIR = ROOT_DIR / "api"
+if str(API_DIR) not in sys.path:
+    sys.path.insert(0, str(API_DIR))
+
+from server.schemas import Worksheet, ExamItem, Option, QuestionType
 
 
 @pytest.fixture
