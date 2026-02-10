@@ -32,9 +32,12 @@ DATA_DIR = BASE_DIR / "data"
 OUTPUT_DIR = BASE_DIR / "output"
 STATIC_DIR = BASE_DIR / "static"
 
-# Ensure directories exist
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+def get_runtime_data_dir() -> Path:
+    """Resolve data directory for local dev or serverless runtime."""
+    if os.getenv("VERCEL"):
+        return Path(tempfile.gettempdir()) / "exam-gen-data"
+    return DATA_DIR
 
 
 def get_runtime_output_dir() -> Path:
