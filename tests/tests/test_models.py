@@ -4,7 +4,7 @@ Tests the Spine: Data validation and parsing.
 """
 import pytest
 from pydantic import ValidationError
-from app.schemas import QuestionType, Option, ExamItem, Worksheet
+from server.schemas import QuestionType, Option, ExamItem, Worksheet
 
 
 def test_option_valid():

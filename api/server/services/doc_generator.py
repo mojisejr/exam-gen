@@ -5,7 +5,7 @@ Handles .docx file generation with proper Thai language formatting.
 from docx import Document
 from docx.shared import Pt, Inches
 
-from app.schemas import QuestionType, Worksheet
+from server.schemas import QuestionType, Worksheet
 
 
 def _add_multiple_choice(doc: Document, item) -> None:

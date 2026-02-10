@@ -10,28 +10,43 @@ const createFile = () =>
   new File(["%PDF-1.4 test"], "test.pdf", { type: "application/pdf" });
 
 const mockSuccessfulFlow = () => {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ brief: "Mock brief" }),
-    })
-    .mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        worksheet: {
-          title: "Mock Exam",
-          subject: "Science",
-          target_level: "Grade 7",
-          items: [],
-        },
-        new_topics: [],
-      }),
-    })
-    .mockResolvedValueOnce({
-      ok: true,
-      blob: async () => new Blob(["docx"], { type: "application/octet-stream" }),
-    });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+
+    if (url.includes("/api/analyze")) {
+      return {
+        ok: true,
+        json: async () => ({ brief: "Mock brief" }),
+      };
+    }
+
+    if (url.includes("/api/generate-batch")) {
+      return {
+        ok: true,
+        json: async () => ({
+          worksheet: {
+            title: "Mock Exam",
+            subject: "Science",
+            target_level: "Grade 7",
+            items: [],
+          },
+          new_topics: [],
+        }),
+      };
+    }
+
+    if (url.includes("/api/render-docx")) {
+      return {
+        ok: true,
+        blob: async () => new Blob(["docx"], { type: "application/octet-stream" }),
+      };
+    }
+
+    return {
+      ok: false,
+      json: async () => ({ detail: "Unexpected fetch call" }),
+    };
+  });
 
   vi.stubGlobal("fetch", fetchMock);
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");

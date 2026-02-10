@@ -78,7 +78,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [batchIndex, setBatchIndex] = useState(0);
 
-
   const batches = useMemo(() => buildBatches(questionCount, 10), [questionCount]);
   const progressPercent = useMemo(() => {
     if (batches.length === 0) return 0;

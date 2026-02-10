@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from docx import Document
 
-from app.main import app, OUTPUT_DIR
+from server.main import app, OUTPUT_DIR
 
 
 client = TestClient(app)

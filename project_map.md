@@ -17,7 +17,8 @@
 
 ## Key Landmarks
 - api/ : FastAPI backend และ AI orchestration
-- app/ : Next.js frontend (Dashboard + Batch UX)
+- src/ : Next.js App Router (Dashboard + Batch UX)
+- public/ : Static assets สำหรับ frontend
 - tests/ : Pytest suite สำหรับ backend
 - data/ : Input staging (ignored)
 - output/ : Generated artifacts (ignored)

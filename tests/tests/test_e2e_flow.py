@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from docx import Document
 
-from app.main import app, OUTPUT_DIR
-from app.schemas import Worksheet, ExamItem, Option
+from server.main import app, OUTPUT_DIR
+from server.schemas import Worksheet, ExamItem, Option
 
 
 client = TestClient(app)
@@ -44,14 +44,14 @@ def test_generate_exam_e2e_batch_50(sample_pdf):
     """E2E-style test: request 50 questions and validate response + DOCX output."""
     mock_client = MagicMock()
 
-    with patch("app.main.get_client", return_value=mock_client):
-        with patch("app.main.upload_to_gemini") as mock_upload:
+    with patch("server.main.get_client", return_value=mock_client):
+        with patch("server.main.upload_to_gemini") as mock_upload:
             mock_file_obj = MagicMock()
             mock_file_obj.uri = "mock://uri"
             mock_upload.return_value = mock_file_obj
 
-            with patch("app.main.agent_analyst") as mock_analyst:
-                with patch("app.main.agent_architect") as mock_architect:
+            with patch("server.main.agent_analyst") as mock_analyst:
+                with patch("server.main.agent_architect") as mock_architect:
                     mock_analyst.return_value = "Mock Design Brief"
                     mock_architect.return_value = _build_mock_worksheet(50)
 
